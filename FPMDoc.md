@@ -773,7 +773,93 @@ public protocol Request {
 
 ### MODEL
 경로 데이터 구조
-받은 장소 데이터를 T Map 로 변환하여 T Map API를 통해 경로 데이터를 받아옵니다.
+JevinciServer를 통해 추천받은 장소를 위경도를 이용하여, T Map API를 통해 경로를 GoogleMap에 표현합니다.
+
+##### Place.swift
+<details><summary>CLICK ME</summary>
+<p>
+
+```swift
+//
+//  Place.swift
+//  fpm
+//
+//  Created by Je.vinci.Inc on 2017. 10. 20..
+//  Copyright © 2017년 Crycat. All rights reserved.
+//
+
+import Foundation
+import SwiftyJSON
+import CoreLocation
+
+struct Place: JSONAble {
+    var id: String
+
+    var longitude: Double
+    var latitude: Double
+    var title: String
+    var address: String
+    var imageUrl: String?
+    var placeUrl: String?
+    var addressBCode: String?
+    var distance: String?
+    var category: String?
+    var phone: String?
+    var newAddress: String?
+
+    init(lat: Double, lon: Double, title: String, address: String){
+        self.id = "-1"
+        self.longitude = lon
+        self.latitude = lat
+        self.title = title
+        self.address = address
+    }
+    init(jsonObject: JSON) {
+        self.id = jsonObject["id"].stringValue
+        self.category = jsonObject["category"].string
+        self.phone = jsonObject["phone"].string
+        self.newAddress = jsonObject["newAddress"].string
+        self.longitude = jsonObject["longitude"].doubleValue
+        self.latitude = jsonObject["latitude"].doubleValue
+        self.imageUrl = jsonObject["imageUrl"].string
+        self.title = jsonObject["title"].stringValue
+        self.placeUrl = jsonObject["placeUrl"].string
+        self.address = jsonObject["address"].stringValue
+        self.addressBCode = jsonObject["addressBCode"].string
+        self.distance = jsonObject["distance"].string
+    }
+    init(SKObject: JSON){
+        self.id = SKObject["id"].stringValue
+        self.title = SKObject["name"].stringValue
+        self.latitude = SKObject["noorLat"].doubleValue
+        self.longitude = SKObject["noorLon"].doubleValue
+        let uperaddr = SKObject["upperAddrName"].stringValue
+        let middleaddr = SKObject["middleAddrName"].stringValue
+        let loweraddr = SKObject["lowerAddrName"].stringValue
+        let detailaddr = SKObject["detailAddrName"].stringValue
+        let firstbuildno = SKObject["firstBuildNo"].stringValue
+        self.address = uperaddr + " " + middleaddr + " " + loweraddr + " " + detailaddr + " " + firstbuildno
+        self.phone = SKObject["telNo"].stringValue
+    }
+    init(POI: JSON){
+        self.id = POI["id"].stringValue
+        self.title = POI["name"].stringValue
+        self.latitude = POI["lat"].doubleValue
+        self.longitude = POI["lon"].doubleValue
+        self.address = POI["address"].stringValue
+        self.phone = POI["tel"].string
+    }
+    func getDistance(place: Place) -> Double{
+        let start = CLLocation(latitude: self.latitude, longitude: self.longitude)
+        let end = CLLocation(latitude: place.latitude, longitude: place.longitude)
+        return end.distance(from: start)
+    }
+}
+
+```
+
+</p>
+</details>
 
 ##### FPMRoute.swift
 * 장소 - 장소의 하나의 모델 입니다.
