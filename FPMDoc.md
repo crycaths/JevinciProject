@@ -25,61 +25,85 @@
   1. 메인 맵에서 출발지, 목적지, 시간 입력을 끝내면 InputViewModel에서 요청을 시작합니다.
   추천 받은 위경도 데이터로 T Map API 경로 요청을 합니다.
   ```swift
-  import UIKit
-  class InvitationViewController: UIViewController{
-      override func viewDidLoad() {
+  func inputComplete(){
+        guard let startpoint = sp, let endpoint = ep, let time = t else {
+            return
+        }
+        let res = FPMResource(start: startpoint, end: endpoint, time: time)
+        FPMManager.getInstance.getFPMRecommandation(resource: res){ temp in
+            guard var fpmdata = temp else {return}
+            guard let tempsp = self.sp else {return}
+            guard let tempep = self.ep else {return}
+            let newsp: FPMPlace = FPMPlace(id: nil, index: 0, place: tempsp)
+            let newep: FPMPlace = FPMPlace(id: nil, index: fpmdata.waypoints.count, place: tempep)
+            fpmdata.waypoints.insert(newsp, at: 0)
+            fpmdata.waypoints.append(newep)
+            let new = fpmdata.waypoints.enumerated().map{ index, fpmplace -> FPMPlace in
+                var newfpm = fpmplace
+                newfpm.index = index
+                return newfpm
+            }
+            fpmdata.waypoints = new
+            Service.instance.requestDirections(fpmdata: fpmdata){ data in
+                guard let directions = data else {return}
+                fpmdata.directions = directions
+                FPMManager.getInstance.save(fpmdata: fpmdata)
+            }
+        }
 
-      }
-  }
+    }
   ```
 
   2. Response 값을 FPMData로 파싱하고, FPMManager에게 전달합니다. FPMManager는 현재 지도 데이터로 업데이트되고, 모든값을 초기화합니다. GoogleMap으로 표현합니다.
-  ~~~swift
-  //FPMManager.swift
-  func start(){
-        guard let T = tracker else {return}
-        T.operationStart()
-    }
-  ~~~
-  ~~~swift
-  //Tracker.swift
-  func operationStart(){
-        //Async 비동기 실행,
-        self.status = .initial  //시작
-        CrycatLocationDefault.getInstance.startUpdateLocation()
-        self.timer = Timer.scheduledTimer(timeInterval: 2.0, target: self, selector: #selector(self.operation), userInfo: nil, repeats: true)
-    }
-    @objc func operation(){
-        if let l = CrycatLocationDefault.getInstance.devicelocation{
-            print(".")
-            self.delegate?.presentUserLocation(location: l.coordinate)
-
-            //유저위치를 받은뒤에. 할일?
-            switch self.status {
-            case .breakaway:
-                break
-            case .initial:
-                guard let allc = self.allCirclePoint else {return}
-                self.offerActivationCircle(circles: allc)
-                self.status = .waiting
-            case .proceeding:
-                self.removeCircleInNextCirclesByCurrentPoint()
-                self.status = .waiting
-            case .waiting:
-                guard let fpmpoint = self.userContainInCircleChecker(location: l.coordinate) else {return}
-                guard let circles = self.getNextCircleSet(fpmpoint: fpmpoint) else {return}
-                self.designateCurrentDirection(fpmpoint: fpmpoint)
-                self.nextCirclePoints = circles
-                self.status = .proceeding
-            }
-        }
-    }
-  ~~~
 
   </p>
   </details>
-<details><summary>[LocalNotification, Circle을 통한 위치 확인 따른 네비게이션 안내]</summary>
+<details><summary>[Tracker를 사용한 위치 확인과 네비게이션 안내]</summary>
 <p>
+
+1. T Map API를 통해 경로 데이터를 받은뒤 FPMManager는 Traker를 사용, 유저위치 확인과 위치에 따른 경로 정보를 표현합니다.
+~~~swift
+//FPMManager.swift
+func start(){
+      guard let T = tracker else {return}
+      T.operationStart()
+  }
+~~~
+~~~swift
+//Tracker.swift
+func operationStart(){
+      //Async 비동기 실행,
+      self.status = .initial  //시작
+      CrycatLocationDefault.getInstance.startUpdateLocation()
+      self.timer = Timer.scheduledTimer(timeInterval: 2.0, target: self, selector: #selector(self.operation), userInfo: nil, repeats: true)
+  }
+  @objc func operation(){
+      if let l = CrycatLocationDefault.getInstance.devicelocation{
+          print(".")
+          self.delegate?.presentUserLocation(location: l.coordinate)
+
+          //유저위치를 받은뒤에. 할일?
+          switch self.status {
+          case .breakaway:
+              break
+          case .initial:
+              guard let allc = self.allCirclePoint else {return}
+              self.offerActivationCircle(circles: allc)
+              self.status = .waiting
+          case .proceeding:
+              self.removeCircleInNextCirclesByCurrentPoint()
+              self.status = .waiting
+          case .waiting:
+              guard let fpmpoint = self.userContainInCircleChecker(location: l.coordinate) else {return}
+              guard let circles = self.getNextCircleSet(fpmpoint: fpmpoint) else {return}
+              self.designateCurrentDirection(fpmpoint: fpmpoint)
+              self.nextCirclePoints = circles
+              self.status = .proceeding
+          }
+      }
+  }
+~~~
+
 </p>
 </details>
 <details><summary>[UserData저장기능, MinimapCapture]</summary>
