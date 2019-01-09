@@ -58,7 +58,8 @@ print("hello world!")
 
 # 기능의 코드리뷰
 ### MODEL
- - 경로 데이터 구조
+경로 데이터 구조
+
 ###### Feature.swift
 <details><summary>CLICK ME</summary>
 <p>
@@ -128,7 +129,9 @@ class Point: Feature{
 
 </p>
 </details>
+
 ###### LineString.swift
+
 <details><summary>CLICK ME</summary>
 <p>
 
@@ -170,6 +173,7 @@ class LineString: Feature{
 
 </p>
 </details>
+
 ###### Direction.swift
 <details><summary>CLICK ME</summary>
 <p>
