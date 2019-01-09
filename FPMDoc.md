@@ -20,6 +20,7 @@
 # 기능의 코드리뷰
 
 ### NETWORK
+APP에서 사용하는 모든 네트워크는 따로 분리하였습니다.
 ##### Task.swift
 <details><summary>CLICK ME</summary>
 <p>
@@ -732,13 +733,51 @@ class Service{
 </p>
 </details>
 
-### MODEL
-경로 데이터 구조
-
+##### HTTPProtocol.swift
 <details><summary>CLICK ME</summary>
 <p>
 
+```swift
+//
+//  HTTPProtocol.swift
+//  fpm
+//
+//  Created by Je.vinci.Inc on 2017. 10. 12..
+//  Copyright © 2017년 Crycat. All rights reserved.
+//
+
+import Foundation
+
+public enum HTTPMethod: String {
+    case post			= "POST"
+    case put				= "PUT"
+    case get				= "GET"
+    case delete			= "DELETE"
+    case patch			= "PATCH"
+}
+
+public protocol Request {
+    var path			: String				{ get }
+
+    var method		: HTTPMethod			{ get }
+
+    var parameters	: [String: Any]?		{ get }
+
+    var headers		: [String: Any]?		{ get }
+}
+
+```
+
+</p>
+</details>
+
+### MODEL
+경로 데이터 구조
+
 ##### FPMRoute.swift
+<details><summary>CLICK ME</summary>
+<p>
+
 ```swift
 //  FPMRoute.swift
 //  fpm
