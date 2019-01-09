@@ -773,7 +773,7 @@ public protocol Request {
 
 ### MODEL
 
-##### Place.swift
+##### Place.swift [장소]
 <details><summary>CLICK ME</summary>
 <p>
 
@@ -859,8 +859,7 @@ struct Place: JSONAble {
 </p>
 </details>
 
-##### FPMRoute.swift
-* 장소 - 장소의 하나의 모델 입니다.
+##### FPMRoute.swift [장소 - 장소의 하나의 모델 입니다.]
 <details><summary>CLICK ME</summary>
 <p>
 
@@ -1151,7 +1150,7 @@ extension GMSMutablePath{
 </p>
 </details>
 
-##### FPMData.swift
+##### FPMData.swift [여러개의 장소 경로]
 <details><summary>CLICK ME</summary>
 <p>
 
