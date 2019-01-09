@@ -20,6 +20,9 @@ print("hello world!")
 </p>
 </details>
 
+<details><summary>CLICK ME</summary>
+<p>
+
 ```swift
   class Feature{
       var type: FEATURETYPE
@@ -37,6 +40,9 @@ print("hello world!")
       }
   }
 ```
+
+</p>
+</details>
 
 
 
