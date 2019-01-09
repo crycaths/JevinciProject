@@ -21,8 +21,8 @@
 # 기능의 코드리뷰
 ### MODEL
  - 경로 데이터 구조
- ###### Feature.swift
- <details><summary>CLICK ME</summary>
+###### Feature.swift
+<details><summary>CLICK ME</summary>
 <p>
 ```swift
 class Feature{
