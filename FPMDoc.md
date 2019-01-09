@@ -19,9 +19,7 @@
 
 # 기능의 코드리뷰
 
-* [JevinciServer를 통해 추천받은 장소를 위경도를 이용하여, T Map API를 통해 경로를 GoogleMap에 표현합니다.]
-
-  <details><summary>CLICK ME</summary>
+  <details><summary>[JevinciServer를 통해 추천받은 장소를 위경도를 이용하여, T Map API를 통해 경로를 GoogleMap에 표현합니다.]</summary>
   <p>
 
   ```swift
@@ -35,11 +33,22 @@
 
   </p>
   </details>
-
-* [LocalNotification, Circle을 통한 위치 확인 따른 네비게이션 안내]
-* [UserData저장기능, MinimapCapture]
-* [WebSocket을 통한 실시간 위치공유, Firebase를 통한 채팅, 파티 생성시 사용되는 APNS ]
-* [WebSocket 채팅 코드내용]
+<details><summary>[LocalNotification, Circle을 통한 위치 확인 따른 네비게이션 안내]</summary>
+<p>
+</p>
+</details>
+<details><summary>[UserData저장기능, MinimapCapture]</summary>
+<p>
+</p>
+</details>
+<details><summary>[WebSocket을 통한 실시간 위치공유, Firebase를 통한 채팅, 파티 생성시 사용되는 APNS ]</summary>
+<p>
+</p>
+</details>
+<details><summary>[WebSocket 채팅 코드내용]</summary>
+<p>
+</p>
+</details>
 
 # NETWORK
 APP에서 사용하는 모든 네트워크는 따로 분리하였습니다.
