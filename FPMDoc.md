@@ -107,6 +107,15 @@ func operationStart(){
 * 차량과 다르게 도보 특성상 사용자가 어디로 갈지 예측 할 수 없다 -> 원을통해 경로이탈과 진행 감시.
 * 유저는 네비게이션을 여행하는동안 계속 사용하고있지 않다. -> 경로의 중간쯤에 갑자기 위치하게되면 이미 지나왔다고 판단.
 
+3. Local Notification
+Tracker는 사용자 위치에따라 LocalNotification을 사용하여 잠금화면에서도 순차적인 위치 안내를 받을 수 있도록 한다.
+~~~swift
+func sendLocalNotification(turntype: TURNTYPE, description: String) {
+        guard let n = localnotification else {return}
+        n.add(turntype: turntype, description: description)
+        NSLog(description)
+    }
+~~~
 
 </p>
 </details>
