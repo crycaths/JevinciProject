@@ -85,8 +85,9 @@ class Feature{
 </details>
 
 ###### Point.swift
-	<details><summary>CLICK ME</summary>
+<details><summary>CLICK ME</summary>
 <p>
+
 ```swift
 class Point: Feature{
     var pointtype: POINTTYPE
@@ -124,11 +125,13 @@ class Point: Feature{
     }
 }
 ```
+
 </p>
 </details>
-	###### LineString.swift
+###### LineString.swift
 <details><summary>CLICK ME</summary>
 <p>
+
 ```swift
 class LineString: Feature{
     var lineindex: Int
@@ -164,11 +167,13 @@ class LineString: Feature{
     }
 }
 ```
+
 </p>
 </details>
- ###### Direction.swift
- <details><summary>CLICK ME</summary>
+###### Direction.swift
+<details><summary>CLICK ME</summary>
 <p>
+
 ```swift
 class Direction{
     var line: Array<EncodedLine> = []
