@@ -52,8 +52,8 @@
 
 # NETWORK
 APP에서 사용하는 모든 네트워크는 따로 분리하였습니다.
-##### Task.swift
-<details><summary>CLICK ME</summary>
+
+<details><summary>Task.swift</summary>
 <p>
 
 ```swift
@@ -223,8 +223,7 @@ struct CrycatTask : Task{
 </p>
 </details>
 
-##### Service.swift
-<details><summary>CLICK ME</summary>
+<details><summary>Service.swift</summary>
 <p>
 
 ```swift
@@ -764,8 +763,7 @@ class Service{
 </p>
 </details>
 
-##### HTTPProtocol.swift
-<details><summary>CLICK ME</summary>
+<details><summary>HTTPProtocol.swift</summary>
 <p>
 
 ```swift
@@ -804,8 +802,7 @@ public protocol Request {
 
 # MODEL
 
-##### Place.swift [장소]
-<details><summary>CLICK ME</summary>
+<details><summary>Place.swift</summary>
 <p>
 
 ```swift
@@ -890,10 +887,10 @@ struct Place: JSONAble {
 </p>
 </details>
 
-##### FPMRoute.swift [장소 - 장소의 하나의 모델 입니다.]
-<details><summary>CLICK ME</summary>
+<details><summary>FPMRoute.swift</summary>
 <p>
 
+[장소 - 장소의 하나의 모델 입니다.]
 ```swift
 //  FPMRoute.swift
 //  fpm
@@ -1181,10 +1178,10 @@ extension GMSMutablePath{
 </p>
 </details>
 
-##### FPMData.swift [여러개의 장소 경로]
-<details><summary>CLICK ME</summary>
+<details><summary>FPMData.swift</summary>
 <p>
 
+[여러개의 장소 경로]
 ```swift
 //
 //  FPMData.swift
@@ -1464,11 +1461,10 @@ class FPMMinion: NSObject, NSCoding{
 </p>
 </details>
 
-##### FPMManager.swfit[현재 사용하고 있는 경로와 유저의 상태를 관리합니다.]
-
-<details><summary>CLICK ME</summary>
+<details><summary>FPMManager.swfit</summary>
 <p>
 
+[현재 사용하고 있는 경로와 유저의 상태를 관리합니다.]
 ```swift
 //
 //  FPMController.swift
