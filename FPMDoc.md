@@ -50,11 +50,10 @@ print("hello world!")
 ![image info](./serverstructure.png)
 
 ## 기능
-1. 경로 데이터는 T Map API를 사용하여, 지도는 GoogleMap으로 표현
+- 경로 데이터는 T Map API를 사용하여, 지도는 GoogleMap으로 표현
 - 도보여행 네비게이션
 - 인상깊은 여행 경로 minimap으로 저장
 - 여러 사용자가 실시간으로 위치 공유
-- 사용자간 채팅 기능
 
 # 기능의 코드리뷰
 ### MODEL
