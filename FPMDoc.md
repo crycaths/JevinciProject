@@ -19,8 +19,44 @@
 
 # 기능의 코드리뷰
 
-  <details><summary>[JevinciServer를 통해 추천받은 장소를 위경도를 이용하여, T Map API를 통해 경로를 GoogleMap에 표현합니다.]</summary>
+  <details><summary>[출발지, 목적지, 시간에 따른 경로 요청]</summary>
   <p>
+
+  <details><summary>메인 맵에서 출발지, 목적지, 시간 입력을 끝내면 InputViewModel에서 요청을 시작합니다.</summary>
+  <p>
+
+```swift
+func inputComplete(){
+        guard let startpoint = sp, let endpoint = ep, let time = t else {
+            return
+        }
+        let res = FPMResource(start: startpoint, end: endpoint, time: time)
+        FPMManager.getInstance.getFPMRecommandation(resource: res){ temp in
+            guard var fpmdata = temp else {return}
+            guard let tempsp = self.sp else {return}
+            guard let tempep = self.ep else {return}
+            let newsp: FPMPlace = FPMPlace(id: nil, index: 0, place: tempsp)
+            let newep: FPMPlace = FPMPlace(id: nil, index: fpmdata.waypoints.count, place: tempep)
+            fpmdata.waypoints.insert(newsp, at: 0)
+            fpmdata.waypoints.append(newep)
+            let new = fpmdata.waypoints.enumerated().map{ index, fpmplace -> FPMPlace in
+                var newfpm = fpmplace
+                newfpm.index = index
+                return newfpm
+            }
+            fpmdata.waypoints = new
+            Service.instance.requestDirections(fpmdata: fpmdata){ data in
+                guard let directions = data else {return}
+                fpmdata.directions = directions
+                FPMManager.getInstance.save(fpmdata: fpmdata)
+            }
+        }
+
+    }
+```
+
+  </p>
+  </details>
 
   ```swift
   import UIKit
