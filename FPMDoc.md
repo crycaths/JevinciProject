@@ -19,7 +19,29 @@
 
 # 기능의 코드리뷰
 
-### NETWORK
+* [JevinciServer를 통해 추천받은 장소를 위경도를 이용하여, T Map API를 통해 경로를 GoogleMap에 표현합니다.]
+
+  <details><summary>CLICK ME</summary>
+  <p>
+
+  ```swift
+  import UIKit
+  class InvitationViewController: UIViewController{
+      override func viewDidLoad() {
+
+      }
+  }
+  ```
+
+  </p>
+  </details>
+
+* [LocalNotification, Circle을 통한 위치 확인 따른 네비게이션 안내]
+* [UserData저장기능, MinimapCapture]
+* [WebSocket을 통한 실시간 위치공유, Firebase를 통한 채팅, 파티 생성시 사용되는 APNS ]
+* [WebSocket 채팅 코드내용]
+
+# NETWORK
 APP에서 사용하는 모든 네트워크는 따로 분리하였습니다.
 ##### Task.swift
 <details><summary>CLICK ME</summary>
@@ -771,7 +793,7 @@ public protocol Request {
 </p>
 </details>
 
-### MODEL
+# MODEL
 
 ##### Place.swift [장소]
 <details><summary>CLICK ME</summary>
@@ -1433,8 +1455,408 @@ class FPMMinion: NSObject, NSCoding{
 </p>
 </details>
 
-### [JevinciServer를 통해 추천받은 장소를 위경도를 이용하여, T Map API를 통해 경로를 GoogleMap에 표현합니다.]
-### [LocalNotification, Circle을 통한 위치 확인 따른 네비게이션 안내]
-### [UserData저장기능, MinimapCapture]
-### [WebSocket을 통한 실시간 위치공유, Firebase를 통한 채팅, 파티 생성시 사용되는 APNS ]
-### [WebSocket 채팅 코드내용]
+##### FPMManager.swfit[현재 사용하고 있는 경로와 유저의 상태를 관리합니다.]
+
+<details><summary>CLICK ME</summary>
+<p>
+
+```swift
+//
+//  FPMController.swift
+//  fpm
+//
+//  Created by Je.vinci.Inc on 2017. 10. 19..
+//  Copyright © 2017년 Crycat. All rights reserved.
+//
+
+import Foundation
+import CoreLocation
+import SwiftyJSON
+import Reachability
+
+class FPMManager: FPMManagerProtocol, FPMPartyManagerProtocol{
+    var fpmmode: FPMMode = .NONE
+    var fpmdata: FPMData?
+    weak var wireframe: FPMManagerWireframe?
+    var tracker: Tracker? {
+        didSet{
+            self.tracker?.delegate = self
+        }
+    }
+    static var getInstance: FPMManagerProtocol & FPMPartyManagerProtocol = FPMManager()
+
+    private init(){}
+    func initializer() {
+        tracker?.operationStop()
+        tracker = nil
+        fpmmode = FPMMode.NONE
+        fpmdata = nil
+        stalker?.stalkerOff()
+        stalker = nil
+        members = []
+    }
+    func getFPMRecommandation(resource: FPMResource,completion: @escaping (FPMData?) -> ()){
+        JevinciTokenModel.getToken{ t in
+            guard let jevincitoken = t else {
+                self.wireframe?.alertNeedLogin()
+                return completion(nil)}
+            Service.instance.requestRecommandation(jtoken: jevincitoken, resource: resource){ temp in
+                guard let fpmdata = temp else {return completion(nil)}
+                completion(fpmdata)
+            }
+        }
+    }
+    func loadFPMDataDetail(routeId: String,mode: FPMMode) {
+        Service.instance.loadRoute(routeId: routeId){ temp in
+            guard let fpmdata = temp else {return}
+            //need direction fpmdata
+            Service.instance.requestDirections(fpmdata: fpmdata){ temp in
+                guard let directions = temp else {return}
+                var newfpm = fpmdata
+                newfpm.directions = directions   
+                //didend
+                self.fpmmode = mode
+                self.load(fpmdata: newfpm)
+            }
+        }
+    }
+    func save(fpmdata: FPMData) {
+        self.fpmdata = fpmdata
+        guard let data = self.createMinion() else {return}
+        guard let name = self.createMinionName() else {return}
+        Service.instance.saveRoute(miniondata: data, minionname: name){ temp in
+            guard let fpmdata = temp else {return}
+            guard var fd = self.fpmdata else {return}
+            fd.imagePath = fpmdata.imagePath
+            fd.id = fpmdata.id
+            self.fpmdata = fd
+            //FPMMinion Save
+//            if fd.imagePath != nil {
+//                self.minionSave(routeid: fd.id, imagename: name)
+//            }
+            guard let newfd = self.fpmdata else {return}
+            let image = UIImage(data: data) ?? UIImage(named: "imagenull.png")!
+            let history = FPMHistory(minion: image, fpmdata: newfd)
+            history.saveHistory
+            self.load(fpmdata: newfd)
+            //get Route Id
+//            Service.instance.saveFavorite(fpmdata: newfd){ bool in
+//                if bool {
+//                    NSLog("save SUCCESS with favorite")
+//                    self.load(fpmdata: newfd)
+//                }
+//            }
+        }
+
+    }
+    private func minionSave(routeid: String, imagename: String){
+        let minion = FPMMinion(routeid: routeid, imagename: imagename)
+        minion.setFPMMinion()
+    }
+    private func createMinionName() -> String?{
+        guard let fd = self.fpmdata else {return nil}
+        let datestr = self.getDateTime()
+        let filename = "\(fd.user.id)-" + datestr + ".png"
+        return filename
+    }
+    private func createMinion() -> Data?{
+        guard let fd = fpmdata else {return nil}
+        let capture = Capture(fpmdata: fd)
+        let pictureRect = CGRect(x: 32.5, y: 172.5, width: 32.5, height: 32.5)
+        let baseRect = CGRect(x: 0, y: 140, width: 375, height: 375)
+        let minion = Minion(frame: baseRect, capture: capture)
+        minion.draw(pictureRect)
+        guard let data = minion.PNGData() else {return nil}
+        return data
+    }
+    private func getDateTime() -> String{
+        let date = NSDate()
+        // *** create calendar object ***
+        var calendar = NSCalendar.current
+
+        // *** Get components using current Local & Timezone ***
+        print(calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date as Date))
+
+        // *** define calendar components to use as well Timezone to UTC ***
+        let unitFlags = Set<Calendar.Component>([.hour, .year, .minute])
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+
+        // *** Get All components from date ***
+        let components = calendar.dateComponents(unitFlags, from: date as Date)
+        print("All Components : \(components)")
+
+        // *** Get Individual components from date ***
+        let month = calendar.component(.month, from: date as Date)
+        let day = calendar.component(.day, from: date as Date)
+        let hour = calendar.component(.hour, from: date as Date)
+        let minutes = calendar.component(.minute, from: date as Date)
+        let seconds = calendar.component(.second, from: date as Date)
+        return String(month) + "-" + String(day) + "-" + String(hour) + "-" + String(minutes) + "-" + String(seconds)
+    }
+    private func regDateConverter() -> Date?{
+        guard let fd = fpmdata else {return nil}
+        guard let d_reg = Double(fd.regData) else {return nil}
+        return Date(timeIntervalSince1970: d_reg)
+    }
+    func toPreview() -> String{
+        switch fpmmode {
+        case .SINGLE:
+            if let fd = fpmdata {
+
+                var str: String = ""
+                for i in 0..<fd.waypoints.count{
+                    str.append("\n" + " \(i). " + fd.waypoints[i].place.title)
+                }
+                return str
+            }else{
+                return "   현재 Single모드 제작중입니다."
+            }
+
+        case .PARTY, .PARTYINVIATION:
+            return "   파티모드입니다."
+        case .NONE, .PARTYready, .PARTYHISTORY,.PARTYNEW:
+            return "   진행중인 발자국이 없습니다"
+        }
+    }
+
+    func load(fpmdata: FPMData){
+        User.getUser{ temp in
+            guard let user = temp else {return}
+            self.fpmdata = fpmdata
+            self.fpmdata?.user = user
+            //test
+            switch self.fpmmode {
+            case .NONE, .SINGLE:
+                self.tracker = TrackerSingle(fpmdata: fpmdata)
+                self.wireframe?.didCompleteSingleMode()
+                self.fpmmode = .SINGLE
+            case .PARTYready,.PARTYNEW:
+                self.wireframe?.didCompleteNewFPMPartyMode()
+            case .PARTYHISTORY:
+                self.wireframe?.didCompleteHistoryFPMPartyMode()
+            case .PARTY, .PARTYINVIATION:
+                self.tracker = TrackerSingle(fpmdata: fpmdata)
+                self.operationPartyModule()
+                self.wireframe?.didCompletePartyMode()
+            }
+        }
+    }
+    func load(fpmparty: FPMParty){
+        User.getUser{ temp in
+            guard let user = temp else {return}
+            guard var fpmdata = fpmparty.route else {return}
+            fpmdata.user = user
+            self.fpmdata = fpmdata
+            self.tracker = TrackerSingle(fpmdata: fpmdata)
+            self.operationPartyModule()
+            self.wireframe?.didCompletePartyMode()
+        }
+    }
+    func start(){
+//        switch self.fpmmode {
+//        case .SINGLE:
+//            break
+//        case .PARTY, .PARTYINVIATION:
+//            break
+//        default:
+//            break
+//        }
+        guard let T = tracker else {return}
+        T.operationStart()
+    }
+    func stop(){
+        self.initializer()
+        wireframe?.emptyMode()
+    }
+    func fpmAvailable() -> Bool {
+        guard fpmmode == .NONE else {
+            NSLog("진행중인 경로가 있네여..")
+            return false
+        }
+        return true
+    }
+    func changeModeNewFPM() {
+        self.fpmmode = .PARTYNEW
+    }
+    func changeModeHistoryFPM() {
+        self.fpmmode = .PARTYHISTORY
+    }
+//PartyProtocol//PartyProtocol//PartyProtocol//PartyProtocol//PartyProtocol//PartyProtocol//PartyProtocol//PartyProtocol
+    var inviter: Inviter?{
+        didSet{
+            inviter?.delegate = self
+        }
+    }
+    var stalker: StalkerProtocol?{
+        didSet{
+            stalker?.delegate = self
+        }
+    }
+    var party: FPMParty?
+    var partyname: String?
+    var members: Array<User>?
+    var currentMember: [UserLocal] = []
+
+    func operationPartyModule(){
+//        self.reachaBility()
+//        guard let members = self.members else {return}
+        stalker = Stalker()
+        guard let st = stalker else {return}
+//        guard let member = self.members else {return}
+        guard let party = self.party else {return}
+        //member was nil
+        self.enterParty(party: party){ temp in
+            guard temp else {return}
+            st.stalkerOn()
+        }
+    }
+    func enterPartyCreation() {
+        self.fpmmode = .PARTYready
+    }
+    func addMember(members: Array<User>) {
+        self.members = members
+    }
+    func createPartyAvailable(completion: @escaping (FPMParty?) -> ()) {
+        guard let pn = self.partyname else {return completion(nil)}
+        guard let fpmdata = self.fpmdata else {return completion(nil)}
+        //websocket
+        //firebase?
+        guard let user = User.getUser() else {return completion(nil)}
+        self.party = FPMParty(master: user, partyname: pn, fpmdata: fpmdata, members: self.members)
+        guard let party = self.party else {return completion(nil)}
+        Service.instance.createParty(party: party){ temp in
+            guard let party = temp else {return completion(nil)}
+            guard let id = party.id else {return completion(nil)}
+            guard id.count > 0 else {return completion(nil)}
+            self.party?.id = party.id
+            self.fpmmode = .PARTY
+            guard let myparty = self.party else {return completion (nil)}
+            completion(myparty)
+        }
+    }
+    func inputPartyName(name: String) {
+        self.partyname = name
+    }
+    func transforterInvition(some: Any) {
+        self.inviter = Inviter()
+        self.inviter?.send(some: some)
+    }
+    func sendMessage(str: String) {
+        guard let st = stalker else {return}
+        st.sendMyMessage(str: str)
+    }
+    func enterParty(party: FPMParty, completion: @escaping (Bool) -> ()) {
+        //EnterPartyUser
+        guard let partyid = party.id else {return completion(false)}
+        Service.instance.updatePartyUser(partyid: partyid){ tempusers in
+            guard let users = tempusers else {return completion(false)}
+            guard let st = self.stalker else {return completion(false)}
+            st.setInitMember(user: users)
+//            self.wireframe?.updateCurrentPartyMember(members: users)
+            completion(true)
+        }
+    }
+    func getDistance(userId: String) -> Double?{
+        guard let st = self.stalker else {return nil}
+        return st.getDistance(userId: userId)
+    }
+    func reachaBility(){
+        reachability.whenReachable = { reachability in
+            if reachability.connection == .wifi {
+                print("Reachable via WiFi")
+            } else {
+                print("Reachable via Cellular")
+            }
+        }
+        reachability.whenUnreachable = { _ in
+            print("Not reachable")
+        }
+        do {
+            try reachability.startNotifier()
+        } catch {
+            print("Unable to start notifier")
+        }
+    }
+//PartyProtocol//PartyProtocol//PartyProtocol//PartyProtocol//PartyProtocol//PartyProtocol//PartyProtocol//PartyProtocol
+    func getShortestDistance(userId: String, completion: @escaping (Direction?) -> ()) {
+        guard let st = self.stalker else {return completion(nil)}
+        st.requestShortestDistance(userId: userId){tempdirection in
+            guard let direction = tempdirection else {return completion(nil)}
+            completion(direction)
+        }
+    }
+}
+
+extension FPMManager: TrackerDelegate{
+    func completeFPMNavigation() {
+        self.stop()
+    }
+    func presentUserLocation(location: CLLocationCoordinate2D) {
+        wireframe?.presentUserLocation(location: location)
+    }
+}
+
+extension FPMManager: InviterDeleagte{
+    func invitedFPMParty(some: Any) {
+        let fpmpush = FPMPush(json: JSON(some))
+        Service.instance.loadInvitation(push: fpmpush){ temp in
+            guard var invitation = temp else {return}
+            self.party = invitation.party
+            guard var tempfpmdata = invitation.party?.route else {return}
+            self.fpmmode = .PARTYINVIATION
+            Service.instance.requestDirections(fpmdata: tempfpmdata){ tempdirection in
+                guard let directions = tempdirection else {return}
+                tempfpmdata.directions = directions
+                invitation.party?.route = tempfpmdata
+                guard let data = self.createMinion(fpmdata: tempfpmdata) else {return}
+                let nullimage = UIImage(named: "imagenull.png")!
+                let image = UIImage(data: data) ?? nullimage
+                self.wireframe?.openInvitationView(invitation: invitation,minion: image)
+            }
+        }
+    }
+    private func createMinion(fpmdata: FPMData) -> Data?{
+        let fd = fpmdata
+        let capture = Capture(fpmdata: fd)
+        let pictureRect = CGRect(x: 32.5, y: 172.5, width: 32.5, height: 32.5)
+        let baseRect = CGRect(x: 0, y: 140, width: 375, height: 375)
+        let minion = Minion(frame: baseRect, capture: capture)
+        minion.draw(pictureRect)
+        guard let data = minion.PNGData() else {return nil}
+        return data
+    }
+}
+
+extension FPMManager: StalkerDelegate{
+    func didFailSubscribe() {
+    }
+    func didConnectWebsocket() {
+    }
+    func didSuccessSubscribe() {
+    }
+    func didConnectFailWebsocket() {
+    }
+    func updateAnyLocation(wslocation: WSLocation) {
+        self.wireframe?.presentMemberLocation(wslocation: wslocation)
+    }
+    func didGetPartyEntranceMessage(message: Message){
+        self.wireframe?.getPartyEntranceMessage(message: message)
+    }
+    func didGetChatMessage(message: Message) {
+        self.wireframe?.getChatMessage(message: message)
+    }
+    func getInitMember(member: Array<User>) {
+        self.wireframe?.getInitMember(member: member)
+    }
+    func didEntrance(entrancemessage: EntranceMessage) {
+        self.wireframe?.didEntrance(entrancemessage: entrancemessage)
+    }
+    func setInitMember(member: Array<Member>) {
+        self.wireframe?.setInitMember(member: member)
+    }
+}
+
+```
+
+</p>
+</details>
