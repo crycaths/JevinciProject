@@ -8,6 +8,7 @@
 - 앱 개발 내용 : 여유 시간과 목적지로 지역의 명소를 추천하여 도보 여행 네비게이션을 제공합니다.
 - 현재상태 : 재정문제로 개발중단
 
+
 ## 구조
 ![image info](./serverstructure.png)
 
@@ -363,9 +364,170 @@ func save(fpmdata: FPMData) {
 
 </p>
 </details>
-<details><summary>[WebSocket을 통한 실시간 위치공유, Firebase를 통한 채팅, 파티 생성시 사용되는 APNS ]</summary>
+<details><summary>[실시간 위치 공유, 네비게이션]</summary>
 <p>
 
+다수의 인원이 같은 경로로 여행하는 네비게이션입니다.
+기본 도보 네비게이션과 같으며, 실시간으로 서로의 위치를 공유합니다.
+서로의 위치를 계속 확인할수 있어야 하기에 WebSocket을 사용했습니다.
+
+APNS를 통하여 JevinciServer로부터 받은 PushNotification 정보로 Party에 참여합니다.
+~~~swift
+//
+//  Websocket.swift
+//  fpm
+//
+//  Created by Je.vinci.Inc on 2017. 11. 13..
+//  Copyright © 2017년 Crycat. All rights reserved.
+//
+
+import Foundation
+import Starscream
+
+
+
+
+protocol StalkerQueue {
+    associatedtype T
+    var elements: [T] {get set}
+}
+extension StalkerQueue{
+    var count: Int{
+        return elements.count
+    }
+    mutating func enqueue(element: T){
+        self.elements.append(element)
+    }
+    mutating func dequeue() -> T?{
+        guard count > 0 else {return nil}
+
+        return elements.remove(at: 0)
+    }
+}
+
+struct StalkerQ: StalkerQueue {
+    var elements: [String] = []
+
+    typealias T = String
+}
+
+protocol FPMWebsocketDelegate: class{
+    func didConected()
+    func didDisconnected(error: String)
+    func didGetMessage(message: String)
+}
+//Thanks! Deltamon
+enum FPMWebsocketFrame{
+    case SUBSCRIBE
+    case DESTINATION
+}
+protocol StarscreamWebsocket {
+    var ws: WebSocket {get}
+
+    weak var delegate: FPMWebsocketDelegate? {get set}
+
+//    var receiveQueue: StalkerQ {get}
+//    var requestQueue: StalkerQ {get}
+
+    var currentnid: Int {get set}
+
+    init?()
+
+    func connect()
+    func disconnect()
+    func subscribe(partyId: String)
+    func sendChatMessage(partyId: String,nick: String, message: String)
+    func sendLocation(partyId: String,location: String)
+    func sendEntaranceMessage(partyId: String,userId: String, message: String)
+    func sendOffMessage(partyId: String,userId: String, message: String)
+    func guaranteeSubscribeLocation(partyId: String)
+}
+
+class FPMWebsocket: StarscreamWebsocket{
+//    var requestQueue: StalkerQ = StalkerQ()
+//    var receiverQueue: StalkerQ = StalkerQ()
+
+    var ws: WebSocket
+
+    var currentnid: Int = 0
+
+    weak var delegate: FPMWebsocketDelegate?
+
+    var nid: Int {
+        get{
+            currentnid += 1
+            return currentnid + 1
+        }
+    }
+    deinit {
+        NSLog("FPMWebsocket was gone")
+    }
+    required init?() {
+        guard let token = JevinciTokenModel.getToken() else {print("Token nil in Websocket!");return nil}
+        guard let url = URL(string: url_jevinci + "/chat") else {return nil}
+        ws = WebSocket(url: url)
+        ws.headers["jwt-header"] = token.accessToken
+        ws.delegate = self
+    }
+    func connect(){
+        ws.connect()
+    }
+    func disconnect(){
+        ws.disconnect()
+    }
+
+
+    func subscribe(partyId: String){
+        let chat = "SUBSCRIBE\nid:sub-\(nid)\ndestination:/topic/chats.\(partyId)\n\n\u{0}"
+        let location = "SUBSCRIBE\nid:sub-\(nid)\ndestination:/topic/locations.\(partyId)\n\n\u{0}"
+        let entarance = "SUBSCRIBE\nid:sub-\(nid)\ndestination:/topic/entrance.\(partyId)\n\n\u{0}"
+        let off = "SUBSCRIBE\nid:sub-\(nid)\ndestination:/topic/off.\(partyId)\n\n\u{0}"
+        ws.write(string: entarance)
+        ws.write(string: location)
+        ws.write(string: chat)
+        ws.write(string: off)
+    }
+    func sendEntaranceMessage(partyId: String,userId: String, message: String){
+        let str = "SEND\ndestination:/app/entrance/\(partyId)\n\n{\"nickname\":\"\(userId)\",\"content\":\"\(message)\"}\u{0}";
+        ws.write(string: str)
+    }
+    func sendOffMessage(partyId: String,userId: String, message: String){
+        let str = "SEND\ndestination:/app/off/\(partyId)\n\n{\"nickname\":\"\(userId)\",\"content\":\"\(message)\"}\u{0}";
+        ws.write(string: str)
+    }
+    func sendChatMessage(partyId: String,nick: String, message: String){
+        let str = "SEND\ndestination:/app/chats/\(partyId)\n\n{\"nickname\":\"\(nick)\",\"content\":\"\(message)\"}\u{0}";
+        ws.write(string: str)
+    }
+    func sendLocation(partyId: String,location: String){
+        let formdata = "SEND\ndestination:/app/locations/\(partyId)\n\n\(location)\u{0}"
+        ws.write(string: formdata)
+    }
+    func guaranteeSubscribeLocation(partyId: String){
+        let wslocationforguarantee = WSLocation(userId: -1, longitude: 0, latitude: 0, speed: 0, d_idx: 0, p_idx: 0, f_idx: 0).toString()
+        let formdata = "SEND\ndestination:/app/locations/\(partyId)\n\n\(wslocationforguarantee)\u{0}"
+        ws.write(string: formdata)
+//        let formdata = "SEND\ndestination:/app/locations/\(partyId)\n\n\(location)\u{0}"
+    }
+
+    //ReachBility
+}
+extension FPMWebsocket: WebSocketDelegate{
+    func websocketDidConnect(socket: WebSocket) {
+        delegate?.didConected()
+    }
+    func websocketDidReceiveData(socket: WebSocket, data: Data) {
+        //
+    }
+    func websocketDidDisconnect(socket: WebSocket, error: NSError?) {
+        let errorstr = error.debugDescription
+        delegate?.didDisconnected(error: errorstr)
+    }
+    func websocketDidReceiveMessage(socket: WebSocket, text: String) {
+        delegate?.didGetMessage(message: text)
+    }
+}
+~~~
 
 
 </p>
