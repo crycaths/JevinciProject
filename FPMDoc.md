@@ -120,7 +120,7 @@ func sendLocalNotification(turntype: TURNTYPE, description: String) {
 </p>
 </details>
 <details><summary>[MinimapCapture]</summary>
-1. 마음에 들었던 여행 루트를 Minimap으로 변환화여 보기쉽게 하고 JevinciServer에 업데이트 합니다.
+1. 마음에 들었던 여행 루트를 Minimap으로 변환화여 보기쉽게 합니다.
 <p>
 
 경로 전체를 비율에 맞추어 정사각형으로 점과 직선만으로 표현합니다.
@@ -339,10 +339,35 @@ class Capture{
 
 ~~~
 
+2. JevinciServer에 업데이트 합니다.
+~~~swift
+//FPMManager.swift
+func save(fpmdata: FPMData) {
+        self.fpmdata = fpmdata
+        guard let data = self.createMinion() else {return}
+        guard let name = self.createMinionName() else {return}
+        Service.instance.saveRoute(miniondata: data, minionname: name){ temp in
+            guard let fpmdata = temp else {return}
+            guard var fd = self.fpmdata else {return}
+            fd.imagePath = fpmdata.imagePath
+            fd.id = fpmdata.id
+            self.fpmdata = fd
+            guard let newfd = self.fpmdata else {return}
+            let image = UIImage(data: data) ?? UIImage(named: "imagenull.png")!
+            let history = FPMHistory(minion: image, fpmdata: newfd)
+            history.saveHistory
+            self.load(fpmdata: newfd)
+        }
+    }
+~~~
+
 </p>
 </details>
 <details><summary>[WebSocket을 통한 실시간 위치공유, Firebase를 통한 채팅, 파티 생성시 사용되는 APNS ]</summary>
 <p>
+
+
+
 </p>
 </details>
 
