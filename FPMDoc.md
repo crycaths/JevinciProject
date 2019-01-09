@@ -1934,3 +1934,795 @@ extension FPMManager: StalkerDelegate{
 
 </p>
 </details>
+
+# UTIL
+
+<details><summary>Tracker.swift</summary>
+<p>
+
+~~~swift
+//
+//  Tracker.swift
+//  fpm
+//
+//  Created by Je.vinci.Inc on 2017. 10. 26..
+//  Copyright © 2017년 Crycat. All rights reserved.
+//
+
+import Foundation
+import CoreLocation
+
+//네비게이션 진행중에 기준이될 좌표.
+//Point와, Line, Direction의 인덱스
+
+//let global: DispatchQueue = DispatchQueue.global()
+//let group = DispatchGroup()
+
+
+var FPMOperator = DispatchQueue.global(qos: DispatchQoS.background.qosClass)
+
+struct FPMTrackerPoint{
+    var d_idx: Int
+    var p_idx: Int
+    var f_idx: Int
+}
+enum FPMTrackerStatus{
+    case initial   //경로 안내 초기상태 ?? 유저가 다른 위치의 경로에 생성할 경우.
+    case proceeding//진행중
+    case waiting   //다음 목적지를 위한 대기상태
+    case breakaway //경로이탈
+}
+
+enum FPMTrackerRadius: Double{
+    case city = 15
+    case plain = 40
+}
+
+struct FPMTrackerCircle {
+    let fpmpoint: FPMTrackerPoint
+    var coordinate: CLLocationCoordinate2D
+    let description: String
+    let turntype: TURNTYPE
+    var isActivation: Bool = false
+    var isvisited: Bool = false
+
+    init(fpmpoint: FPMTrackerPoint, coordinate: CLLocationCoordinate2D, description: String, turntype: TURNTYPE) {
+        self.fpmpoint = fpmpoint
+        self.coordinate = coordinate
+        self.description = description
+        self.turntype = turntype
+    }
+
+    func isContain(coordinate: CLLocationCoordinate2D) -> Bool{
+        let result = CLCircularRegion(center: self.coordinate, radius: FPMTrackerRadius.city.rawValue, identifier: "")
+        if result.contains(coordinate) {
+            return true
+        }
+        return false
+    }
+}
+
+protocol TrackerDelegate{
+    func completeFPMNavigation()
+    func presentUserLocation(location: CLLocationCoordinate2D)
+}
+protocol Tracker{
+    //start는 fPMManager가 실행시키고, 그러면 Tracker를 생성하고,
+    var currentPoint: FPMTrackerPoint {get}         //currentpoint와 status와, 유저의 위치정보로, 유저의 경로 진행 상태을 추론해야한다.
+//    var nextPoint: FPMTrackerPoint {get}        //왜 next가 존재해야하지? 그것도 하나가? 아하, 그동안 경로를 100프로의 확률로 진행한다고 가정했으니 next에 무조건 도달할테니까. 그럼 뒤집어야겠네?,
+    var nextCirclePoints: Array<FPMTrackerCircle>? {get} //다음 가능한 방문지, status에 따라서 AllDirection, NowDirection 의 FPMPointCircle을 활성화시킨다.
+    var allCirclePoint: Array<FPMTrackerCircle>? {get} //status에 상관없이 현재 경로상의 모든 Circle
+    var status: FPMTrackerStatus {get}          //유저의 경로진행상태
+
+    var localnotification: CrycatLocalNotification? {get}
+
+    var timer: Timer? {get}
+
+    var location: CrycatLocationDefault? {get}
+    var delegate: TrackerDelegate? {get set}
+
+//    func offerActivationCircle()                //현재 status를 통해 다음 가능한 방문지를 활성화 시키는
+//    func offerDeactivationCircle()              //현재 status를 통해 다음 가능한 방문지를 비활성화 시키는
+
+    func operationStart()
+    func operationStop()
+    func userContainInCircleChecker(location: CLLocationCoordinate2D) -> FPMTrackerPoint?
+    func sendLocalNotification(turntype: TURNTYPE, description: String)                //로컬 notiqueue에 Input함수
+
+    init?(fpmdata: FPMData)                                      //Tracker가 실행됨과 동시에 실행해야할것들, 실패할수있다., 각종 넷상태, websocket등등, 제약사항을넣자. 실패할수있는 Initiallizer
+
+}
+class TrackerSingle: Tracker{
+
+    var currentPoint: FPMTrackerPoint = FPMTrackerPoint(d_idx: 0, p_idx: 0, f_idx: 0) //초기 가장 첫 Point
+
+    var status: FPMTrackerStatus = .initial
+
+    let totaldirectioncount: Int
+
+    var allCirclePoint: Array<FPMTrackerCircle>?
+    var nextCirclePoints: Array<FPMTrackerCircle>?
+    var hearbeat: DispatchQueue?
+    var timer: Timer?
+
+    var delegate: TrackerDelegate?
+    var location: CrycatLocationDefault?
+    var localnotification: CrycatLocalNotification?
+
+    required init?(fpmdata: FPMData) {
+        allCirclePoint = fpmdata.createAllFPMTrackerCircle()
+        location = CrycatLocationDefault.getInstance
+        localnotification = CrycatLocalNotification()
+        self.totaldirectioncount = fpmdata.directions.count
+        configure()
+    }
+    deinit {
+        NSLog("Tracker was gone")
+    }
+
+    func configure(){
+        guard location != nil else {return}
+        location?.delegate = self
+        self.timer = Timer()
+    }
+    func offerActivationCircle(circles: Array<FPMTrackerCircle>) {
+        self.nextCirclePoints = circles.map{ (circle) -> FPMTrackerCircle in
+            var result = circle
+            result.isActivation = true
+            return result
+        }
+    }
+    func sendLocalNotification(turntype: TURNTYPE, description: String) {
+        guard let n = localnotification else {return}
+        n.add(turntype: turntype, description: description)
+        NSLog(description)
+    }
+    func userContainInCircleChecker(location: CLLocationCoordinate2D) -> FPMTrackerPoint?{
+        guard let circles = self.nextCirclePoints else {return nil}
+        var result: FPMTrackerPoint?
+        let _ = circles.map{ (c) in
+            if c.isContain(coordinate: location) {
+                result = c.fpmpoint
+                self.sendLocalNotification(turntype: c.turntype, description: c.description)
+            }
+        }
+        return result
+    }
+
+    func designateCurrentDirection(fpmpoint: FPMTrackerPoint){
+        self.currentPoint = fpmpoint
+    }
+    func removeCircleInNextCirclesByCurrentPoint(){
+        let point = self.currentPoint
+        while(self.nextCirclePoints?.first != nil){
+            guard let first = self.nextCirclePoints?.first else {return}
+            if first.fpmpoint.p_idx > point.p_idx{
+                break
+            }
+            self.allCirclePoint?.removeFirst()
+            self.nextCirclePoints?.removeFirst()
+        }
+        if self.nextCirclePoints != nil, self.nextCirclePoints!.isEmpty {
+            let currentdirectionindex = point.d_idx
+            if currentdirectionindex < self.totaldirectioncount - 1{
+                //Direction남아있는경우
+                let temppoint = FPMTrackerPoint(d_idx: currentdirectionindex + 1, p_idx: 0, f_idx: 0)
+                self.nextCirclePoints = getNextCircleSet(fpmpoint: temppoint)
+            }else{
+                //Direction이 없는경우
+                operationStop()
+            }
+        }
+    }
+
+    func getNextCircleSet(fpmpoint: FPMTrackerPoint) -> Array<FPMTrackerCircle>?{
+        guard let nc = allCirclePoint else {return nil}
+        let circles = nc.filter{ (circle) in
+            if circle.fpmpoint.d_idx == fpmpoint.d_idx, circle.fpmpoint.p_idx >= fpmpoint.p_idx{
+                return true
+            }else{
+                return false
+            }
+        }
+        guard circles.isEmpty == false else {return nil}
+        return circles
+    }
+    func operationStart(){
+        //Async 비동기 실행,
+        self.status = .initial  //시작
+        CrycatLocationDefault.getInstance.startUpdateLocation()
+        self.timer = Timer.scheduledTimer(timeInterval: 2.0, target: self, selector: #selector(self.operation), userInfo: nil, repeats: true)
+    }
+    func operationStop(){
+        timer?.invalidate()
+        timer = nil
+//        FPMOperator.suspend()
+        CrycatLocationDefault.getInstance.stopUpdateLocation()
+        localnotification = nil
+//        delegate?.completeFPMNavigation() 이거 내가 여기 왜적어놨는지 모르겠으나 지우질못하고있다 불안해서 일단 놔두고 후에 처리하자.
+    }
+
+    @objc func operation(){
+        if let l = CrycatLocationDefault.getInstance.devicelocation{
+            print(".")
+            self.delegate?.presentUserLocation(location: l.coordinate)
+
+            //유저위치를 받은뒤에. 할일?
+            switch self.status {
+            case .breakaway:
+                break
+            case .initial:
+                guard let allc = self.allCirclePoint else {return}
+                self.offerActivationCircle(circles: allc)
+                self.status = .waiting
+            case .proceeding:
+                self.removeCircleInNextCirclesByCurrentPoint()
+                self.status = .waiting
+            case .waiting:
+                guard let fpmpoint = self.userContainInCircleChecker(location: l.coordinate) else {return}
+                guard let circles = self.getNextCircleSet(fpmpoint: fpmpoint) else {return}
+                self.designateCurrentDirection(fpmpoint: fpmpoint)
+                self.nextCirclePoints = circles
+                self.status = .proceeding
+            }
+        }
+    }
+}
+
+extension TrackerSingle: CrycatLocationDelegate{
+    func test_updateLocations(locations: Array<CLLocation>) {
+
+    }
+    func updateLocationsAverage(location: CLLocationCoordinate2D) {
+
+    }
+    func didUpdatedLocation(location: CLLocation) {
+
+    }
+    func stoplocatioinupdate() {
+
+    }
+    func startuplocationupdate() {
+
+    }
+}
+
+class TrackerParty{
+
+}
+
+extension FPMData{
+    func createAllFPMTrackerCircle() -> Array<FPMTrackerCircle>?{
+        var result: Array<FPMTrackerCircle> = []
+        for i in 0..<self.directions.count{
+            guard let circles = createOneFPMTrackerCircle(index: i) else {return nil}
+            result.append(contentsOf: circles)
+        }
+        return result
+    }
+    func createOneFPMTrackerCircle(index: Int) -> Array<FPMTrackerCircle>?{
+        guard index < directions.count else {return nil}
+        let direction = self.directions[index]
+        let points = direction.getPointArray()
+        let result = points.map{ (p) -> FPMTrackerCircle in
+            let point = FPMTrackerPoint(d_idx: index, p_idx: p.pointindex, f_idx: p.index)
+            return FPMTrackerCircle(fpmpoint: point, coordinate: p.coordinate, description: p.description ?? "???", turntype: p.turntype)
+        }
+        return result
+    }
+}
+
+
+~~~
+
+</p>
+</details>
+
+<details><summary>Stalker.swift</summary>
+<p>
+
+~~~swift
+//
+//  Stalker.swift
+//  fpm
+//
+//  Created by Je.vinci.Inc on 2017. 11. 13..
+//  Copyright © 2017년 Crycat. All rights reserved.
+//
+
+import Foundation
+import Starscream
+import SwiftyJSON
+import CoreLocation
+import Reachability
+
+let reachability = Reachability()!
+
+enum EntranceMode{
+    case IN
+    case OUT
+}
+struct EntranceMessage{
+    var userid: String
+    var mode: EntranceMode
+
+
+    init(json: JSON, mode: EntranceMode){
+        self.userid = json["nickname"].stringValue
+        self.mode = mode
+    }
+}
+struct WSLocation: WSLocationJSONAble{
+//    var directionIdx: Int
+    var userId: Int
+    var longitude: Double
+    var latitude: Double
+    var speed: Double
+    var directionIdx: Int
+    var pointIdx: Int
+    var lineIdx: Int
+//    var date: String
+
+    init(json: JSON){
+        self.userId = json["userId"].intValue
+        self.longitude = json["longitude"].doubleValue
+        self.latitude = json["latitude"].doubleValue
+        self.speed = json["speed"].doubleValue
+//        self.directionIdx = json["directionIdx"].intValue
+        self.directionIdx = json["directionIdx"].intValue
+        self.pointIdx = json["pointIdx"].intValue
+        self.lineIdx = json["lineIdx"].intValue
+//        self.date = json["date"].stringValue
+    }
+    init(userId: Int, longitude: Double, latitude: Double, speed: Double, d_idx: Int, p_idx: Int, f_idx: Int){
+        self.userId = userId
+        self.longitude = longitude
+        self.latitude = latitude
+        self.speed = speed
+//        self.directionIdx = directionIdx
+        self.directionIdx = d_idx
+        self.pointIdx = p_idx
+        self.lineIdx = f_idx
+//        self.date = Date().description
+    }
+}
+extension Date{
+    static func stringToDate(str: String) -> Date?{
+        let RFC3339DateFormatter = DateFormatter()
+        RFC3339DateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        RFC3339DateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZZZZZ"
+        RFC3339DateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        /* 39 minutes and 57 seconds after the 16th hour of December 19th, 1996 with an offset of -08:00 from UTC (Pacific Standard Time) */
+        let date = RFC3339DateFormatter.date(from: str)
+        return date
+    }
+}
+
+
+struct Member {
+    var id: Int
+    var ison: Bool = false
+    var userlocal: UserLocal?
+    var wslocation: WSLocation?
+    //초대받은자가 하는일.
+}
+
+
+protocol StalkerDelegate: class {
+    func didConnectFailWebsocket()
+    func didConnectWebsocket()
+    func didFailSubscribe()
+    func didSuccessSubscribe()
+    func getInitMember(member: Array<User>)
+    func updateAnyLocation(wslocation: WSLocation)
+    func didGetChatMessage(message: Message)
+    func didGetPartyEntranceMessage(message: Message)
+    func didEntrance(entrancemessage: EntranceMessage)
+    func setInitMember(member: Array<Member>)
+}
+
+protocol StalkerProtocol {
+
+    var websocket: StarscreamWebsocket? {get}
+//    var initmembers: Array<User> {get}
+    var initmember: Array<Member>? {get}
+    var currentMember: Array<UserLocal> {get}
+    var timer: Timer? {get}
+    weak var delegate: StalkerDelegate? {get set}
+
+    init()
+
+    func stalkerOn()
+    func stalkerOff()
+    func sendMyMessage(str: String)
+    func setInitMember(user: Array<User>)
+    func getDistance(userId: String) -> Double?
+    func requestShortestDistance(userId: String, completion: @escaping (Direction?) -> ())
+//    func memberEnter()
+//    func memberOut()
+//    func memberSendMessage()
+//    func memberSendLocation()
+//
+//    func memberUpdateLocation()
+//    func memberUpdateChat()
+//    func memberUpdateEnter()
+//    func memberUpdateOut()
+}
+class Stalker: StalkerProtocol{
+    weak var delegate: StalkerDelegate?
+    var websocket: StarscreamWebsocket?
+//    var initmembers: Array<User> = []
+    var initmember: Array<Member>?
+    var currentmember: Array<Member>?
+    var currentMember: Array<UserLocal> = []
+    var timer: Timer?
+    var entrancetimer: Timer?
+
+    var isOn: Bool = false
+    var guarantorSubscribeLocation: Bool = false
+    var guarantorSubscribeEntrance: Bool = false{
+        didSet{
+            guard guarantorSubscribeEntrance else {return}
+            self.entrancetimer?.invalidate()
+            self.entrancetimer = nil
+            if self.timer == nil {
+                self.timer = Timer.scheduledTimer(timeInterval: 5.0, target: self, selector: #selector(sendMyLocation), userInfo: nil, repeats: true)
+            }
+        }
+    }
+
+    required init() {
+        self.nowOn = true
+        reachaBility()
+    }
+
+    func reachaBility(){
+        reachability.whenReachable = { reachability in
+            if reachability.connection == .wifi {
+                print("Reachable via WiFi")
+            } else {
+                print("Reachable via Cellular")
+            }
+            self.reConnection()
+        }
+        reachability.whenUnreachable = { _ in
+            print("Not reachable")
+            self.stalkerOff()
+        }
+        do {
+            try reachability.startNotifier()
+        } catch {
+            print("Unable to start notifier")
+        }
+    }
+    deinit {
+        NSLog("Stalker was gone")
+    }
+    func setInitMember(user: Array<User>) {
+        self.initmember = nil
+        var result: Array<Member> = [] {
+            didSet{
+                if result.count == user.count - 1{
+                    self.initmember = result
+                    guard let sender = self.initmember else {return}
+                    delegate?.setInitMember(member: sender)
+                }
+            }
+        }
+        guard let me = User.getUser() else {return}
+        for i in 0..<user.count{
+            if me.id != user[i].id {
+                let luser = UserLocal(user: user[i])
+                UserLocal.fetchProfile(element: luser){ new in
+                    let member = Member(id: user[i].id, ison: false, userlocal: new, wslocation: nil)
+//                    self.initmember?.append(member)
+                    result.append(member)
+                }
+            }
+        }
+
+    }
+    func socketConnect() {
+        websocket = FPMWebsocket()
+        guard var ws = websocket else {return}
+        ws.delegate = self
+        ws.connect()
+    }
+    func socketSubscribe() {
+        guard let ws = self.websocket else {return}
+        guard let party = FPMManager.getInstance.party else {return}
+        guard let id = party.id else {return}
+
+        ws.subscribe(partyId: id)
+    }
+    var userWSLocation: WSLocation?
+
+    @objc func sendMyLocation() {
+        guard let location = CrycatLocationDefault.getInstance.devicelocation else {return}
+        guard let ws = self.websocket else {return}
+        guard let party = FPMManager.getInstance.party else {return}
+        guard let id = party.id else {return}
+        guard guarantorSubscribeLocation == true else {
+            ws.guaranteeSubscribeLocation(partyId: id)
+            return
+        }
+        guard let user = User.getUser() else {return}
+        let userid = user.id
+        guard let tracker = FPMManager.getInstance.tracker else {return}
+        let fpmpoint = tracker.currentPoint
+        let wslocation = WSLocation(userId: userid, longitude: location.coordinate.longitude, latitude: location.coordinate.latitude, speed: location.speed, d_idx: fpmpoint.d_idx, p_idx: fpmpoint.p_idx, f_idx: fpmpoint.f_idx)
+//        if locationsStabilityChecker(wslocation: wslocation){
+//        self.userWSLocation = wslocation
+        ws.sendLocation(partyId: id, location: wslocation.toString())
+        let printWSLocation = wslocation.toString()
+        self.userWSLocation = wslocation
+//        if isOn == false, wslocation.userId != party.master.id{
+            //마스터가 아니라면
+//            ws.sendEntaranceMessage(partyId: id, userId: String(userid), message: "")
+//            isOn = true
+//        }
+//        }
+    }
+    private func locationsStabilityChecker(wslocation: WSLocation) -> Bool{
+        let id = wslocation.userId
+        guard let idx = self.searchMember(userid: id) else {return false}
+        guard let im = self.initmember else {return false}
+        if im[idx].wslocation == nil {
+            return true
+        }else{
+            let current = Place(lat: im[idx].wslocation!.latitude, lon: im[idx].wslocation!.longitude, title: "", address: "")
+            let new = Place(lat: wslocation.latitude, lon: wslocation.longitude, title: "", address: "")
+
+            let distance = current.getDistance(place: new)
+            switch distance{
+            case 0..<10:
+                return false
+            case 10..<100:
+                return false
+            default:
+                return true
+            }
+        }
+    }
+    func getDistance(userId: String) -> Double?{
+        guard let uid = Int(userId) else {return nil}
+        guard let idx = searchMember(userid: uid) else {return nil}
+        guard let members = self.initmember else {return nil}
+        guard let wslocation = members[idx].wslocation else {return nil}
+        let fpmpoint = FPMTrackerPoint(d_idx: wslocation.directionIdx, p_idx: wslocation.pointIdx, f_idx: wslocation.lineIdx)
+        guard let distance = DistanceCalculator.calculatorDistance(anotherpoint: fpmpoint) else {return nil}
+        switch distance {
+        case 0:
+            guard let mycllocation = CrycatLocationDefault.getInstance.devicelocation else {return nil}
+            return mycllocation.coordinate.getRealMeterTo(to: CLLocationCoordinate2D(latitude: wslocation.latitude ,longitude: wslocation.longitude))
+        case -1:
+            return -1
+        default:
+            break
+        }
+        return distance
+    }
+    func sendMyMessage(str: String) {
+        guard let ws = self.websocket else {return}
+        guard let party = FPMManager.getInstance.party else {return}
+        guard let id = party.id else {return}
+        if let me = User.getUser() {
+            ws.sendChatMessage(partyId: id, nick: me.nickname, message: str)
+        }
+    }
+    func sendEntranceMessage(nick: String){
+        guard let ws = self.websocket else {return}
+        guard let party = FPMManager.getInstance.party else {return}
+        guard let id = party.id else {return}
+        ws.sendChatMessage(partyId: id, nick: nick, message: "님이 입장하셨습니다.")
+    }
+
+    func operationStart(){
+        //send Location
+    }
+
+    func stalkerOn() {
+        self.nowOn = true
+        self.socketConnect()
+        //구독했다는 보장이있은후에.
+        //입장했다는 보장을 어떻게?.?
+        //입장했다는 보장이있은후에.
+        self.entrancetimer = Timer.scheduledTimer(timeInterval: 1.0, target: self, selector: #selector(sendEnterance), userInfo: self, repeats: true)
+    }
+    var nowOn: Bool = true
+    func reConnection(){
+        guard nowOn == false else {return}
+        stalkerOn()
+    }
+    func stalkerOff() {
+        self.guarantorSubscribeEntrance = false
+        self.guarantorSubscribeEntrance = false
+        guard let ws = self.websocket else {return}
+        guard let partyid = FPMManager.getInstance.party?.id else {return}
+        guard let id = User.getUser()?.id else {return}
+        ws.sendOffMessage(partyId: partyid, userId: String(id), message: "")
+        websocket?.disconnect()
+        websocket = nil
+        self.timer?.invalidate()
+        self.timer = nil
+        self.entrancetimer?.invalidate()
+        self.timer = nil
+        self.nowOn = false
+    }
+    func requestShortestDistance(userId: String, completion: @escaping (Direction?) -> ()){
+        guard let intId = Int(userId) else {return completion(nil)}
+        guard let index = self.searchMember(userid: intId) else {return completion(nil)}
+        guard self.initmember != nil else {return}
+        let member = self.initmember![index]
+        guard let deviceLocation = CrycatLocationDefault.getInstance.devicelocation else {return completion(nil)}
+        let myPlace = Place(lat: deviceLocation.coordinate.latitude, lon: deviceLocation.coordinate.longitude, title: "내위치", address: "")
+        guard let anotherWSLocation = member.wslocation else {return completion(nil)}
+        let anotherPlace = Place(lat: anotherWSLocation.latitude, lon: anotherWSLocation.longitude, title: "너위치", address: "")
+        Service.instance.requestDirection(sp: myPlace, ep: anotherPlace){ tempPath in
+            guard let path = tempPath else {return completion(nil)}
+            let direction = Direction(sequence: 0, path: path)
+            completion(direction)
+        }
+    }
+}
+
+extension Stalker: FPMWebsocketDelegate{
+    func didConected() {
+        print("Connected Websocket")
+        self.socketSubscribe()
+        //구독했다는 보장.
+//        DispatchQueue.global().async(execute: {
+//            sleep(2)
+//            self.sendEnterance()
+//        })
+    }
+    @objc func sendEnterance(){
+        guard let ws = self.websocket else {return}
+        guard let party = FPMManager.getInstance.party else {return}
+        guard let id = party.id else {return}
+        guard let user = User.getUser() else {return}
+        ws.sendEntaranceMessage(partyId: id, userId: String(user.id), message: "")
+    }
+    func didDisconnected(error: String) {
+        print(error)
+    }
+
+    func didGetMessage(message: String) {
+        //switch able with string parser
+        //location, chat, subscribeSuccess
+        print(message)
+        let separate = WebsocketStringParser.titleParser(text: message)
+        switch separate {
+        case "/chats":
+            let json = WebsocketStringParser.contentParserToJSON(text: message)
+            //{"nickname":"Hopechings","content":"Asdfasdf","sendDate":1510811385313}
+            let msg = Message(json: json)
+            delegate?.didGetChatMessage(message: msg)
+        case "/locations":
+            let json = WebsocketStringParser.contentParserToJSON(text: message)
+            let wslocation = WSLocation(json: json)
+            guard guarantorSubscribeEntrance == true else {return}
+            guard wslocation.userId != -1 else {
+                self.guarantorSubscribeLocation = true
+                return
+            }
+            if self.locationsStabilityChecker(wslocation: wslocation){
+                updateMemberWSLocation(wslocation: wslocation)
+            }
+//            바로 전달하지 말고, stalker자체 검열.
+//            delegate?.updateAnyLocation(wslocation: wslocation)
+        case "/entrance":
+            let json = WebsocketStringParser.contentParserToJSON(text: message)
+            //{"nickname":"Hopechings","content":"Asdfasdf","sendDate":1510811385313}
+            let message = EntranceMessage(json: json, mode: .IN)
+            guard let myid = User.getUser()?.id else {return}
+            guard let partymasterid = FPMManager.getInstance.party?.master.id else {return}
+            if message.userid == String(partymasterid) {
+                self.entrancetimer?.invalidate()
+                self.entrancetimer = nil
+                self.guarantorSubscribeEntrance = true
+                return
+            }else{
+                guard message.userid != String(myid) else {
+                    self.guarantorSubscribeEntrance = true
+                    return
+                }
+                self.entranceUserAdd(userId: message.userid){ boolean in
+                    guard boolean else {return}
+//                    self.guarantorSubscribeEntrance = true
+                    self.delegate?.didEntrance(entrancemessage: message)
+                }
+            }
+
+        case "/off":
+            let json = WebsocketStringParser.contentParserToJSON(text: message)
+            //{"nickname":"Hopechings","content":"Asdfasdf","sendDate":1510811385313}
+            let message = EntranceMessage(json: json, mode: .OUT)
+            guard let intid = Int(message.userid) else {return}
+            if deleteMember(userid: intid){
+                delegate?.didEntrance(entrancemessage: message)
+            }
+        default:
+            break
+        }
+    }
+    private func entranceUserAdd(userId: String, completion: @escaping (Bool) -> ()){
+        Service.instance.loadUser(id: userId){ tempuser in
+            guard let user = tempuser else {return completion(false)}
+            let local = UserLocal(user: user)
+            UserLocal.fetchProfile(element: local){ localtemp in
+                guard let localuser = localtemp else {return completion(false)}
+                let member = Member(id: user.id, ison: true, userlocal: localuser, wslocation: nil)
+                if self.initmember == nil {
+                    self.initmember = []
+                }
+                let idx = self.searchMember(userid: member.id)
+                if idx == nil {
+                    self.initmember?.append(member)
+                }
+                completion(true)
+            }
+
+        }
+    }
+    func updateMemberWSLocation(wslocation: WSLocation){
+        guard let index = searchMember(userid: wslocation.userId) else {return}
+        guard let initmem = self.initmember else {return}
+        self.initmember![index].wslocation = wslocation
+        //보장된 위치업데이트
+        delegate?.updateAnyLocation(wslocation: wslocation)
+    }
+    private func searchMember(userid: Int) -> Int?{
+        var idx: Int? = nil
+        guard let members = self.initmember else {return nil}
+        let tempmem = members.enumerated().filter{ (i,m) -> Bool in
+            if m.id == userid{
+                idx = i
+                return true
+            }else{
+                return false
+            }
+        }
+        guard tempmem.count == 1 else {return nil}
+        return idx
+    }
+    private func deleteMember(userid: Int) -> Bool{
+        guard let idx = self.searchMember(userid: userid) else {return false}
+        guard let _ = self.initmember else {return false}
+        self.initmember!.remove(at: idx)
+        return true
+    }
+
+}
+struct WebsocketStringParser {
+    static func titleParser(text: String) -> String{
+        return text.Extraction(start: "c", end: ".")
+    }
+    static func contentParserToJSON(text: String) -> JSON{
+        let parse = text.Extraction(start: "{", end: "}")
+        let sum = "{" + parse + "}"
+        let json = JSON(parseJSON: sum)
+        return json
+    }
+}
+extension String{
+    var chomp: String{
+        mutating get {
+            self.remove(at: self.startIndex)
+            return self
+        }
+    }
+    func Extraction(start: Character, end: Character) -> String{
+        let sindex = self.characters.index(of: start)
+        let subtext = self.substring(from: sindex!)
+        let eindex = subtext.characters.index(of: end)
+        let subsubtext = subtext.substring(to: eindex!)
+        var result = subsubtext
+        return result.chomp
+    }
+}
+
+~~~
+
+</p>
+</details>
