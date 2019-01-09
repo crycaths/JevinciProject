@@ -119,15 +119,229 @@ func sendLocalNotification(turntype: TURNTYPE, description: String) {
 
 </p>
 </details>
-<details><summary>[UserData저장기능, MinimapCapture]</summary>
+<details><summary>[MinimapCapture]</summary>
+1. 마음에 들었던 여행 루트를 Minimap으로 변환화여 보기쉽게 하고 JevinciServer에 업데이트 합니다.
 <p>
+
+경로 전체를 비율에 맞추어 정사각형으로 점과 직선만으로 표현합니다.
+~~~swift
+//
+//  Capture.swift
+//  fpm
+//
+//  Created by Je.vinci.Inc on 2017. 10. 31..
+//  Copyright © 2017년 Crycat. All rights reserved.
+//
+
+import Foundation
+import CoreLocation
+
+class Minion: UIView{
+    var imageView: Array<UIImageView> = []
+
+    var capture: Capture!
+
+    var points: Array<drawpoint> = []
+
+    init(frame: CGRect, capture: Capture) {
+        super.init(frame: frame)
+        self.capture = capture
+        self.points = capture.shuter()
+    }
+
+    required init?(coder aDecoder: NSCoder) {
+        fatalError()
+    }
+    override func draw(_ rect: CGRect) {
+        let backgroundcolor = UIColor.white
+        self.backgroundColor = backgroundcolor
+
+        let context = UIGraphicsGetCurrentContext()
+        let points = self.points
+        for i in 0..<points.count{
+            context?.beginPath()
+            context?.setLineWidth(10.0)
+            context?.setStrokeColor(color_main.cgColor)
+            if i != 0{
+                context?.move(to: myPoint(points: points[i-1]))
+            }else{
+                context?.move(to: myPoint(points: points[i]))
+            }
+            context?.addLine(to: myPoint(points: points[i]))
+            context?.strokePath()
+        }
+
+        self.imageView = self.createPointView()
+        self.addArrayUIView(arryview: self.imageView)
+    }
+    private func getPoints() -> Array<drawpoint>{
+        let points = capture.shuter()
+        return points
+    }
+    private func createPointView() -> Array<UIImageView>{
+        var result: Array<UIImageView> = []
+        let points = self.points
+        for i in 0..<points.count{
+            if points[i].realplace != nil{
+                let temp = UIImageView(frame: self.imageRect(points: points[i]))
+                temp.image = UIImage(named: "circle.png")
+                result.append(temp)
+            }
+        }
+        return result
+    }
+    private func myPoint(points: drawpoint) -> CGPoint{
+        return CGPoint(x: points.x + 32.5, y: points.y + 32.5)
+    }
+    private func imageRect(points: drawpoint) -> CGRect{
+        return CGRect(x: points.x - 10 + 32.5, y: points.y - 10 + 32.5, width: 20, height: 20)
+    }
+}
+extension UIView{
+    func addArrayUIView(arryview: Array<UIView>){
+        for i in 0..<arryview.count{
+            self.addSubview(arryview[i])
+        }
+    }
+}
+extension UIView{
+    func takeSnapshotOfView() -> UIImage? {
+        let view = self
+        view.backgroundColor = UIColor(white: 1, alpha: 0)
+        UIGraphicsBeginImageContext(CGSize(width: view.frame.size.width, height: view.frame.size.height))
+        view.drawHierarchy(in: CGRect(x: 0.0, y: 0.0, width: view.frame.size.width, height: view.frame.size.height), afterScreenUpdates: true)
+        let image = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return image
+    }
+}
+extension Minion{
+    func PNGData() -> Data?{
+        guard let image = self.takeSnapshotOfView() else {return nil}
+        let data = UIImagePNGRepresentation(image)
+        return data
+    }
+}
+extension UIImage{
+    func PNGData() -> Data?{
+        guard let data = UIImagePNGRepresentation(self) else {return nil}
+        return data
+    }
+}
+
+
+struct drawpoint {
+    var x: Double
+    var y: Double
+    var realplace: Bool?
+    init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
+        self.realplace = nil
+    }
+}
+class Capture{
+    var center: CLLocationCoordinate2D
+    var points: Array<Place> = []
+    var waypoint: Array<drawpoint> = []
+    var ratiox: Double!
+    var ratioy: Double!
+    init(fpmdata: FPMData){
+        var temppoints: Array<Place> = []
+        for i in 0..<fpmdata.waypoints.count - 1{
+            for j in 0..<fpmdata.directions[i].getPointArray().count{
+                let coordinate = fpmdata.directions[i].getPointArray()[j].coordinate
+                var t = Place(lat: coordinate.latitude, lon: coordinate.longitude, title: "", address: "")
+                if j == 0 || j == fpmdata.directions[i].getPointArray().count - 1{
+                    t.title = "Place"
+                }
+                temppoints.append(t)
+            }
+        }
+        self.points = temppoints
+        func getCetner(x1: CLLocationCoordinate2D, x2: CLLocationCoordinate2D) -> CLLocationCoordinate2D{
+            let x = (x1.longitude + x2.longitude) / 2
+            let y = (x1.latitude + x2.latitude) / 2
+            return CLLocationCoordinate2D(latitude: y, longitude: x)
+        }
+        var result:Double = 0
+        var s: CLLocationCoordinate2D!
+        var e: CLLocationCoordinate2D!
+        for i in 0..<points.count{
+            for j in i..<points.count{
+                let temp = points[j].getDistance(place: points[i])
+                if temp > result {
+                    result = temp
+                    s = CLLocationCoordinate2D(latitude: points[j].latitude, longitude: points[j].longitude)
+                    e = CLLocationCoordinate2D(latitude: points[i].latitude, longitude: points[i].longitude)
+                }
+            }
+        }
+        self.center = getCetner(x1: s, x2: e)
+    }
+    private func getRatio(){
+        var x:Double = 0
+        var y:Double = 0
+        for i in 0..<self.points.count{
+            let tempx:Double = center.longitude - self.points[i].longitude
+            let tempy:Double = center.latitude - self.points[i].latitude
+
+
+            var temp = drawpoint(x: tempx, y: tempy)
+            if self.points[i].title == "Place"{
+                temp.realplace = true
+            }
+            self.waypoint.append(temp)
+
+
+            let tx = getAbsolutevalue(x: tempx)
+            let ty = getAbsolutevalue(x: tempy)
+            print("tempx \(i) = \(tempx)  ----> \(tx)")
+            print("tempy \(i) = \(tempy)  ----> \(tx)\r\r")
+
+
+            if tx > x {
+                x = tx
+            }
+            if ty > y {
+                y = ty
+            }
+        }
+        print("farst x = \(x)")
+        print("farst y = \(y)")
+        self.ratiox = 150 / x
+        self.ratioy = 150 / y
+        print("ratio x = \(self.ratiox!)")
+        print("ratio y = \(self.ratioy!)")
+    }
+    private func getAbsolutevalue(x: Double) -> Double{
+        var result: Double = x
+        if x < 0 {
+            result = x * -1
+            return result
+        }
+        return result
+    }
+    private func getWaypoints(){
+        for i in 0..<self.waypoint.count{
+            waypoint[i].x = 300 - (waypoint[i].x * self.ratiox + 150)
+            waypoint[i].y = waypoint[i].y * self.ratioy + 150
+            print("convert x \(waypoint[i].x)")
+            print("convert y \(waypoint[i].y)")
+        }
+    }
+    public func shuter() -> Array<drawpoint>{
+        self.getRatio()
+        self.getWaypoints()
+        return self.waypoint
+    }
+}
+
+~~~
+
 </p>
 </details>
 <details><summary>[WebSocket을 통한 실시간 위치공유, Firebase를 통한 채팅, 파티 생성시 사용되는 APNS ]</summary>
-<p>
-</p>
-</details>
-<details><summary>[WebSocket 채팅 코드내용]</summary>
 <p>
 </p>
 </details>
