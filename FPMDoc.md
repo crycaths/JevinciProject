@@ -20,10 +20,180 @@
 # 기능의 코드리뷰
 
 ### NETWORK
+##### Task.swift
 <details><summary>CLICK ME</summary>
 <p>
 
+```swift
+//
+//  NonAuth.swift
+//  fpm
+//
+//  Created by Je.vinci.Inc on 2017. 10. 12..
+//  Copyright © 2017년 Crycat. All rights reserved.
+//
+
+import Foundation
+import Alamofire
+import SwiftyJSON
+
+protocol Multipart{
+}
+protocol Imageable {
+}
+protocol Task: Multipart, Imageable{
+}
+
+extension Task{
+    private func convert(request: Request) -> URLRequest{
+        let urlstr = request.path
+        let encoded = urlstr.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        let url = URL(string: encoded!)
+        let header = request.headers
+
+        let parameter = request.parameters
+        let method = request.method
+        var urlrequest = URLRequest(url: url!)
+        urlrequest.httpMethod = method.rawValue
+        if header != nil {
+            for (key, value) in header!{
+                urlrequest.addValue(value as! String, forHTTPHeaderField: key)
+            }
+        }
+
+        if parameter != nil{
+            let data = try? JSONSerialization.data(withJSONObject: parameter!, options: [])
+            urlrequest.httpBody = data
+        }
+        return urlrequest
+    }
+    func excute(request:Request,completion: @escaping (JSON?) -> ()){
+        Alamofire.request(convert(request: request)).responseJSON{ response in
+            switch response.result {
+            case .success(let value):
+                let json = JSON(value)
+                NSLog("success: \(json)")
+                completion(json)
+            case .failure(let error):
+                NSLog("fail: \(error)")
+                completion(nil)
+            }
+        }
+    }
+}
+
+extension Multipart{
+    func excuteMulti(request: Request, filename: String, filedata: Data, mimetype: MimeType, completion: @escaping (JSON?) -> ()){
+        guard let request = self.createMultipartURLRequest(request: request, filename: filename, filedata: filedata, mimetype: mimetype) else {return completion(nil)}
+        Alamofire.request(request).responseJSON{ response in
+            switch response.result {
+            case .success(let value):
+                let json = JSON(value)
+                NSLog("success: \(json)")
+                completion(json)
+            case .failure(let error):
+                NSLog("fail: \(error)")
+                completion(nil)
+            }
+        }
+
+    }
+    private func createMultipartURLRequest(request: Request, filename: String, filedata: Data, mimetype: MimeType) -> URLRequest?{
+        guard let url = URL(string: request.path) else {return nil}
+        var result: URLRequest = URLRequest(url: url)
+        let bound = self.generateBoundaryString()
+        let oldheader = request.headers
+        let header = ["Content-type": "multipart/form-data; boundary=\(bound)",
+            "accept": "application/json"]
+        let method = request.method
+        guard let parameter = request.parameters else {return nil}
+        let body: Data = self.createMultipartBody(parameter: parameter, filename: filename, filedata: filedata, mimetype: mimetype, boundary: bound)
+        for (key, value) in header{
+            result.addValue(value, forHTTPHeaderField: key)
+        }
+        if oldheader != nil{
+            for (key, value) in oldheader!{
+                let stringvalue = value as? String
+                result.addValue(stringvalue ?? "", forHTTPHeaderField: key)
+            }
+        }
+        result.httpMethod = method.rawValue
+        result.httpBody = body
+        return result
+    }
+    private func generateBoundaryString() -> String{
+        return "Boundary-\(NSUUID().uuidString)"
+    }
+    private func createMultipartBody(parameter: Dictionary<String,Any>, filename: String, filedata: Data, mimetype: MimeType, boundary: String) -> Data{
+        let body = NSMutableData()
+        let name = "file"
+        for (key,value) in parameter{
+            body.appendString(string: "--\(boundary)\r\n")
+            body.appendString(string: "Content-Disposition: form-data; name=\"\(key)\"\r\n")
+            body.appendString(string: "Content-Type: application/json; charset=UTF-8\r\n\r\n")
+            let stringvalue = value as? String
+            body.appendString(string: "\(stringvalue ?? "")\r\n")
+        }
+        body.appendString(string: "--\(boundary)\r\n")
+        var mime: String
+        switch mimetype {
+        case .png:
+            mime = "image/png"
+        case .jpeg:
+            mime = "image/jpeg"
+        }
+        let defFileName = filename
+        body.appendString(string: "Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(defFileName)\"\r\n")
+        body.appendString(string: "Content-Type: \(mime)\r\n\r\n")
+        body.append(filedata)
+        body.appendString(string: "\r\n")
+        body.appendString(string: "--\(boundary)--")
+        return body as Data
+    }
+}
+
+extension Imageable{
+    private func convertRequestToURLRequest(request: Request) -> URLRequest?{
+        guard let url = URL(string: request.path) else {return nil}
+        var urlrequest: URLRequest = URLRequest(url: url)
+        if request.headers != nil {
+            for (key, value) in request.headers!{
+                urlrequest.addValue(value as! String, forHTTPHeaderField: key)
+            }
+        }
+        urlrequest.httpMethod = "GET"
+        return urlrequest
+    }
+    func excuteImage(request: Request,completion: @escaping (Data?) -> ()){
+        guard let urlrequest = convertRequestToURLRequest(request: request) else {return}
+        URLSession.shared.dataTask(with: urlrequest){ data, response, error in
+//            guard let httpresponse = response as? HTTPURLResponse else {return}
+//            guard httpresponse.statusCode == 200 else {NSLog("code : \(httpresponse.statusCode)");return completion(nil)}
+            guard let imagedata = data else {return completion(nil)}
+            completion(imagedata)
+            }.resume()
+    }
+}
+enum MimeType{
+    case png
+    case jpeg
+}
+extension NSMutableData {
+    func appendString(string: String) {
+        let data = string.data(using: String.Encoding.utf8, allowLossyConversion: true)
+        append(data!)
+    }
+}
+struct CrycatTask : Task{
+}
+```
+
+</p>
+</details>
 ##### Service.swift
+<details><summary>CLICK ME</summary>
+<p>
+
 ```swift
 //
 //  Service.swift
