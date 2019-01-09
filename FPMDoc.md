@@ -772,8 +772,6 @@ public protocol Request {
 </details>
 
 ### MODEL
-경로 데이터 구조
-JevinciServer를 통해 추천받은 장소를 위경도를 이용하여, T Map API를 통해 경로를 GoogleMap에 표현합니다.
 
 ##### Place.swift
 <details><summary>CLICK ME</summary>
@@ -1436,7 +1434,7 @@ class FPMMinion: NSObject, NSCoding{
 </p>
 </details>
 
-
+### [JevinciServer를 통해 추천받은 장소를 위경도를 이용하여, T Map API를 통해 경로를 GoogleMap에 표현합니다.]
 ### [LocalNotification, Circle을 통한 위치 확인 따른 네비게이션 안내]
 ### [UserData저장기능, MinimapCapture]
 ### [WebSocket을 통한 실시간 위치공유, Firebase를 통한 채팅, 파티 생성시 사용되는 APNS ]
