@@ -103,6 +103,8 @@ func operationStart(){
       }
   }
 ~~~
+![image info](./Trackerinfo.png)
+* 차량과 다르게 도보 특성상 사용자가 어디로 갈지 예측 할 수 없다
 
 </p>
 </details>
