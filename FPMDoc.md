@@ -8,6 +8,24 @@
 - 앱 개발 내용 : 여유 시간과 목적지로 지역의 명소를 추천하여 도보 여행 네비게이션을 제공합니다.
 - 현재상태 : 재정문제로 개발중단
 
+```swift
+class Feature{
+    var type: FEATURETYPE
+    var index: Int
+    var name: String?
+    var description: String?
+    init(featureType: FEATURETYPE, index: Int, description: String, name: String) {
+        self.type = featureType
+        self.index = index
+        self.description = description
+        self.name = name
+    }
+    func returnType() -> FEATURETYPE{
+        return self.type
+    }
+}
+```
+
 ## 구조
 ![image info](./serverstructure.png)
 
