@@ -773,8 +773,10 @@ public protocol Request {
 
 ### MODEL
 경로 데이터 구조
+받은 장소 데이터를 T Map 로 변환하여 T Map API를 통해 경로 데이터를 받아옵니다.
 
 ##### FPMRoute.swift
+* 장소 - 장소의 하나의 모델 입니다.
 <details><summary>CLICK ME</summary>
 <p>
 
@@ -1064,7 +1066,289 @@ extension GMSMutablePath{
 
 </p>
 </details>
-받은 장소 데이터를 T Map 로 변환하여 T Map API를 통해 경로 데이터를 받아옵니다.
+
+##### FPMData.swift
+<details><summary>CLICK ME</summary>
+<p>
+
+```swift
+//
+//  FPMData.swift
+//  fpm
+//
+//  Created by Je.vinci.Inc on 2017. 10. 23..
+//  Copyright © 2017년 Crycat. All rights reserved.
+//
+
+import Foundation
+import SwiftyJSON
+
+
+struct FPMPlace {
+    var id: Int?
+    var index: Int
+    var place: Place
+    init(json: JSON){
+        self.id = json["id"].int
+        self.index = json["index"].intValue
+        self.place = Place(jsonObject: json["place"])
+    }
+    init(id: Int?, index: Int, place: Place){
+        self.id = id
+        self.index = index
+        self.place = place
+    }
+}
+
+struct FPMData{
+    var user: User
+    var id: String
+    var regData: String
+    var centerLat: Double
+    var centerLng: Double
+    var totalDistance: Int
+    var radius: Int
+    var imagePath: String?
+    var waypoints: Array<FPMPlace> = []
+    var directions: Array<Direction> = []
+    var otherPlaceList: Array<Place> = []
+
+    init(jsonObject: JSON) {
+        let user = User(jsonObject: jsonObject["user"])
+        self.user = user
+        self.id = jsonObject["id"].stringValue
+        self.regData = jsonObject["regDate"].stringValue
+        self.centerLat = jsonObject["centerLat"].doubleValue
+        self.centerLng = jsonObject["centerLng"].doubleValue
+        self.totalDistance = jsonObject["totalDistance"].intValue
+        self.radius = jsonObject["radius"].intValue
+        self.imagePath = jsonObject["imagePath"].string
+        let waypoints = jsonObject["waypoints"].arrayValue
+        for fpmplace in waypoints{
+            //            let fpmplace = FPMPlace(id: fpmplace["id"].string, index: fpmplace["index"].intValue, place: Place(jsonObject: fpmplace["place"]))
+            let tempfpmplace = FPMPlace(json: fpmplace)
+            self.waypoints.append(tempfpmplace)
+        }
+        let otherplace = jsonObject["otherPlaceList"]
+        let cCultural = otherplace["cCultural"].arrayValue
+        let cCafe = otherplace["cCafe"].arrayValue
+        let cRestaurant = otherplace["cRestaurant"].arrayValue
+        let cAttractions = otherplace["cAttractions"].arrayValue
+        var tempotherplace = Array<Place>()
+        for cul in cCultural{
+            let place = Place(jsonObject: cul)
+            tempotherplace.append(place)
+        }
+        for res in cRestaurant{
+            let place = Place(jsonObject: res)
+            tempotherplace.append(place)
+        }
+        for caf in cCafe{
+            let place = Place(jsonObject: caf)
+            tempotherplace.append(place)
+        }
+        for att in cAttractions{
+            let place = Place(jsonObject: att)
+            tempotherplace.append(place)
+        }
+        self.otherPlaceList = tempotherplace
+    }
+    func jevinciPostId() -> Dictionary<String,Any>{
+        var dic: Dictionary<String,Any> = [:]
+        dic["id"] = self.id
+        return dic
+    }
+    func jevinciPostParty() -> Dictionary<String,Any>{
+        var dic: Dictionary<String,Any> = [:]
+        dic["id"] = self.id
+        if let getuser = User.getUser(){
+            dic["user"] = getuser.jevinciPost()
+            dic["regDate"] = self.regData
+            dic["centerLat"] = self.centerLat
+            dic["centerLng"] = self.centerLng
+            dic["radius"] = self.radius
+            dic["imagePath"] = self.imagePath
+            dic["totalDistance"] = self.totalDistance
+
+            let waypoints = self.waypoints.map{ (f:FPMPlace) -> Dictionary<String,Any> in
+                var dic: Dictionary<String,Any> = [:]
+                if let s = f.id {
+                    dic["id"] = s
+                }else{
+                    dic["id"] = NSNull()
+                }
+                dic["index"] = f.index
+
+                var placedic:Dictionary<String,Any> = [:]
+
+                placedic["id"] = f.place.id
+                placedic["title"] = f.place.title
+                placedic["latitude"] = f.place.latitude
+                placedic["longitude"] = f.place.longitude
+                placedic["phone"] = f.place.phone
+                placedic["imageUrl"] = f.place.imageUrl
+                placedic["placeUrl"] = f.place.placeUrl
+                placedic["distance"] = f.place.distance
+                placedic["category"] = f.place.category
+                placedic["newAdress"] = f.place.newAddress
+                placedic["addressBCode"] = f.place.addressBCode
+
+                dic["place"] = placedic
+
+                return dic
+            }
+            dic["waypoints"] = waypoints
+            return dic
+        }else{
+            return [:]
+        }
+
+    }
+    func jevinciPost() -> Dictionary<String,Any>{
+        var dic: Dictionary<String,Any> = [:]
+        dic["id"] = self.id
+        if let getuser = User.getUser(){
+            dic["user"] = getuser.jevinciPost()
+            dic["regDate"] = self.regData
+            dic["centerLat"] = self.centerLat
+            dic["centerLng"] = self.centerLng
+            dic["radius"] = self.radius
+            dic["imagePath"] = self.imagePath
+            dic["totalDistance"] = self.totalDistance
+
+            let waypoints = self.waypoints.map{ (f:FPMPlace) -> Dictionary<String,Any> in
+                var dic: Dictionary<String,Any> = [:]
+                if let s = f.id {
+                    dic["id"] = s
+                }else{
+                    dic["id"] = NSNull()
+                }
+                dic["index"] = f.index
+
+                var placedic:Dictionary<String,Any> = [:]
+
+                placedic["id"] = f.place.id
+                placedic["title"] = f.place.title
+                placedic["latitude"] = f.place.latitude
+                placedic["longitude"] = f.place.longitude
+                placedic["phone"] = f.place.phone
+                placedic["imageUrl"] = f.place.imageUrl
+                placedic["placeUrl"] = f.place.placeUrl
+                placedic["distance"] = f.place.distance
+                placedic["category"] = f.place.category
+                placedic["newAdress"] = f.place.newAddress
+                placedic["addressBCode"] = f.place.addressBCode
+
+                dic["place"] = placedic
+
+                return dic
+            }
+            dic["waypoints"] = waypoints
+            guard let strdic = try? JSONSerialization.data(withJSONObject: dic, options: []) else {return [:]}
+            let str = String(data: strdic,encoding: .utf8)
+            var rootdic = Dictionary<String,Any>()
+            rootdic["route"] = str
+            return rootdic
+        }else{
+            return [:]
+        }
+    }
+    func favoritePost() -> Dictionary<String,Any>{
+        var dic: Dictionary<String,Any> = [:]
+        dic["userId"] = self.user.id
+        dic["route"] = ["id":"\(self.id)"]
+        return dic
+    }
+    func searchPlaceInOtherPlacelist(place: Place) -> Place?{
+        let places = self.otherPlaceList.filter{ p in
+            if p.id == place.id{
+                return true
+            }
+            return false
+        }
+        if places.count == 1{
+            return places.first
+        }else {
+            return nil
+        }
+    }
+    func searchPlaceIndexInOtherPlacelist(place: Place) -> Int?{
+        for i in 0..<otherPlaceList.count{
+            if otherPlaceList[i].id == place.id{
+                return i
+            }
+        }
+        return nil
+    }
+    var descriptionWaypoint: String {
+        var result: String = ""
+        for i in 0..<waypoints.count{
+            let pt = waypoints[i].place.title
+            switch i{
+            case 0:
+                result.append("\n출발지 ")
+            case waypoints.count - 1:
+                result.append("\n목적지 ")
+            default:
+                result.append("\n\(i)번째 ")
+            }
+            result.append(" \(pt)")
+        }
+        return result
+    }
+}
+
+class FPMMinion: NSObject, NSCoding{
+    var routeid: String?
+    var imagename: String?
+
+    init(routeid: String, imagename: String){
+        self.routeid = routeid
+        self.imagename = imagename
+    }
+
+    required init(coder decoder: NSCoder){
+        self.routeid = decoder.decodeObject(forKey: "routeid") as? String
+        self.imagename = decoder.decodeObject(forKey: "imagename") as? String
+    }
+    func encode(with aCoder: NSCoder) {
+        aCoder.encode(self.routeid, forKey: "routeid")
+        aCoder.encode(self.imagename, forKey: "imagename")
+    }
+
+    func setFPMMinion(){
+        var saveminions: Array<FPMMinion> = []
+        var loadminions = FPMMinion.loadFPMMinions()
+        guard let rid = routeid, let img = imagename else {return}
+        let fpmminion = FPMMinion(routeid: rid, imagename: img)
+        if loadminions != nil {
+            loadminions!.append(fpmminion)
+            saveminions = loadminions!
+        }else{
+            saveminions.append(fpmminion)
+        }
+        let data = NSKeyedArchiver.archivedData(withRootObject: saveminions)
+        UserDefaults.standard.set(data, forKey: UserDefaultList.FPMMinion.rawValue)
+        //        UserDefaults.standard.set(NSKeyedArchiver.archivedData(withRootObject: saveminions), forKey: UserDefaultList.FPMMinion.rawValue)
+        //        UserDefaults.standard.set(saveminions, forKey: UserDefaultList.FPMMinion.rawValue)
+        //        UserDefaults.standard.setPersistentDomain(dic, forName: UserDefaultList.FPMMinion.rawValue)
+    }
+    static func loadFPMMinions() -> Array<FPMMinion>?{
+        guard let data = UserDefaults.standard.object(forKey: UserDefaultList.FPMMinion.rawValue) as? Data else {return nil}
+        guard let minions = NSKeyedUnarchiver.unarchiveObject(with: data) as? [FPMMinion] else {return nil}
+        return minions
+        //        guard let tempminions = UserDefaults.standard.persistentDomain(forName: UserDefaultList.FPMMinion.rawValue) else {return nil}
+        //        if let minions = tempminions["\(UserDefaultList.FPMMinion.rawValue)"] as? Array<FPMMinion> {
+        //            return minions
+        //        }else{
+        //            return []
+        //        }
+    }
+}
+```
+
+</p>
+</details>
 
 
 ### [LocalNotification, Circle을 통한 위치 확인 따른 네비게이션 안내]
