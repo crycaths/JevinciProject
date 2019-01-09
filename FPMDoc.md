@@ -62,6 +62,7 @@ print("hello world!")
 ###### Feature.swift
 <details><summary>CLICK ME</summary>
 <p>
+
 ```swift
 class Feature{
     var type: FEATURETYPE
@@ -79,9 +80,11 @@ class Feature{
     }
 }
 ```
+
 </p>
 </details>
-	###### Point.swift
+
+###### Point.swift
 	<details><summary>CLICK ME</summary>
 <p>
 ```swift
